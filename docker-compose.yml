@@ -1,0 +1,37 @@
+# MarketPulse service orchestration.
+# See ARCHITECTURE.md ADR-003 (single Postgres instance for state, dataset, audit).
+
+services:
+  postgres:
+    # Debian-based standard image (NOT alpine): alpine's musl/glibc and locale
+    # differences cause subtle issues with bulk loads and string sorting.
+    image: postgres:18
+    container_name: marketpulse-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: marketpulse
+      # DB user inside the container — project-named for portability, unrelated
+      # to the host OS user. Anyone cloning gets the same setup without edits.
+      POSTGRES_USER: marketpulse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      # Predictable Unicode handling for Yelp data (encoding + collation).
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8"
+    volumes:
+      # Named volume for durable persistence (not a bind mount).
+      # PG18 places data in a version-specific subdir (/var/lib/postgresql/18/docker/)
+      # when mounted at /var/lib/postgresql — enables future pg_upgrade --link.
+      # See https://github.com/docker-library/postgres/pull/1259
+      - postgres_data:/var/lib/postgresql
+      # Numbered SQL migrations run alphabetically on first boot only.
+      - ./db/schema:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marketpulse -d marketpulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres_data:
