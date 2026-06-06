@@ -9,7 +9,11 @@ services:
     container_name: marketpulse-postgres
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      # Host port is configurable and defaults to 5433 (NOT 5432) to avoid
+      # colliding with a native PostgreSQL that may already own 5432 on the
+      # host. Override POSTGRES_PORT in .env if 5433 is also taken. The
+      # container's internal port is always 5432.
+      - "${POSTGRES_PORT:-5433}:5432"
     environment:
       POSTGRES_DB: marketpulse
       # DB user inside the container — project-named for portability, unrelated

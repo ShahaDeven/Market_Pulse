@@ -258,6 +258,30 @@ For a typical query — "Draft an outlook memo on Chipotle Q3 2024" — the flow
 8. **Resume node** is triggered by the UI write to `approvals`. LangGraph resumes
    from the checkpoint, applies the human edits, writes final memo to `audit_log`.
 
+### ADR-008: Normalize city capitalization in the businesses table
+
+**Decision:** After load, run `UPDATE businesses SET city = INITCAP(city)` 
+to normalize city names to Title Case.
+
+**Why:** Yelp's source data has inconsistent capitalization for the same 
+city (e.g., "Philadelphia", "PHILADELPHIA", "philadelphia" all appear). 
+Without normalization, simple aggregations like `GROUP BY city` fragment 
+the same city across multiple rows. INITCAP normalizes to Title Case 
+deterministically.
+
+**Why INITCAP, not LOWER:** Title Case matches how users naturally write 
+city names ("Philadelphia"), which makes generated reports and MCP tool 
+outputs read better than lowercase ("philadelphia").
+
+**Tradeoffs accepted:**
+- Permanent data modification — original raw capitalization is lost
+- INITCAP doesn't handle every edge case perfectly (e.g., "St. Louis" stays correct, but unusual names might be slightly off). For US Yelp cities this is fine.
+- For a production system pulling from a live source, the loader should 
+  normalize at ingest time rather than as a post-load step.
+
+**What I would do in production:** Apply INITCAP inside the loader's 
+tuple_builder function for businesses, so the table is born clean.
+
 ## 5. State and schemas
 
 **Postgres logical layout:**
