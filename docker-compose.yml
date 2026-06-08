@@ -37,5 +37,49 @@ services:
       retries: 5
       start_period: 10s
 
+  # ---- Community MCP servers (AGPL-3.0) ----
+  # These are third-party MCP servers (see CLAUDE.md build-vs-buy decisions).
+  # They communicate over stdio transport, NOT HTTP, and are launched as
+  # subprocesses by the LangGraph agent on demand: the agent starts one,
+  # calls its tools, and lets it exit. They do NOT run continuously.
+  #
+  # Defining them here does not add them to the always-on service stack
+  # (note restart: "no"). It just ensures the images are pulled and their
+  # configuration is captured consistently in one place. `docker compose up`
+  # will start them, but the agent owns their real lifecycle at runtime.
+  sec-edgar-mcp:
+    # PINNED to 1.0.8 — do not use :latest.
+    image: stefanoamorelli/sec-edgar-mcp:1.0.8
+    container_name: marketpulse-sec-edgar-mcp
+    # Excluded from default `up` — stdio MCP servers are launched as
+    # ephemeral subprocesses by the agent, not run as services. Defined
+    # here only to pin image versions and document configuration. Use
+    # `docker run` or `docker compose --profile mcp-manual up <service>`
+    # for manual testing.
+    profiles: ["mcp-manual"]
+    environment:
+      # Read from .env — not hardcoded. SEC requires a valid User-Agent.
+      SEC_EDGAR_USER_AGENT: ${SEC_EDGAR_USER_AGENT}
+    stdin_open: true   # required for MCP stdio transport
+    tty: true
+    restart: "no"      # launched on-demand by the agent, not long-running
+
+  fred-mcp-server:
+    # Docker tag :latest for now — will pin via digest once we verify what works.
+    image: stefanoamorelli/fred-mcp-server:latest
+    container_name: marketpulse-fred-mcp-server
+    # Excluded from default `up` — stdio MCP servers are launched as
+    # ephemeral subprocesses by the agent, not run as services. Defined
+    # here only to pin image versions and document configuration. Use
+    # `docker run` or `docker compose --profile mcp-manual up <service>`
+    # for manual testing.
+    profiles: ["mcp-manual"]
+    environment:
+      # Read from .env — not hardcoded.
+      FRED_API_KEY: ${FRED_API_KEY}
+    stdin_open: true   # required for MCP stdio transport
+    tty: true
+    restart: "no"      # launched on-demand by the agent, not long-running
+
 volumes:
   postgres_data:
