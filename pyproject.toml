@@ -13,6 +13,21 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "streamlit>=1.40",
     "structlog>=24.0",
+
+    # Agent layer dependencies (Day 4+)
+    # langgraph: state graph orchestration with supervisor + sub-agent pattern
+    # langchain-mcp-adapters: MCP client adapter for LangChain/LangGraph
+    #   (handles subprocess lifecycle for stdio MCP servers)
+    # langchain-{anthropic,openai}: LLM providers — Claude Sonnet for supervisor,
+    #   GPT-4o-mini for cheaper sub-agent calls (per ADR-002)
+    # pydantic v2: structured tool I/O and state validation
+    #   (langgraph and pydantic are already declared above — not duplicated here)
+    "langchain-mcp-adapters>=0.1.0",
+    "langchain-anthropic>=0.3.0",
+    "langchain-openai>=0.3.0",
+    "langchain-core>=0.3.0",
+    "typing-extensions>=4.9",
+    "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]
