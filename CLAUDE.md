@@ -42,7 +42,7 @@ See ARCHITECTURE.md for full layout. Top level:
 - Logging via structlog with JSON output (never print())
 - Prompts live as .md files in agent/prompts/, loaded at runtime — NOT as Python strings
 - All SQL in db/schema/ files, never inline in Python (except simple queries in tools)
-- One MCP tool per file in tools.py — keep them isolated and testable
+- One MCP tool per file once a server exceeds 5 tools; below that, group in tools.py — keep them isolated and testable
 - Tests live next to code: mcp_servers/yelp_events_mcp/tests/
 
 ## Things to NOT do
