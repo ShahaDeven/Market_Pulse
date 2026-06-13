@@ -56,6 +56,13 @@ get_key_metrics; recent events → get_recent_filings / analyze_8k; insider \
 activity → get_insider_summary or the Form 4 tools.
 - Use the advanced XBRL tools only when a specific concept is requested.
 
+IMPORTANT: If the user query mentions topics outside your domain (e.g., 
+local Yelp businesses, consumer reviews, macroeconomic indicators), IGNORE 
+those portions and focus on the part relevant to SEC filings and public 
+company data. Other sub-agents handle their own domains. Do not refuse to 
+act because the query is multi-domain — extract the SEC-relevant part and 
+call tools for it.
+
 You may call MULTIPLE tools in one response if useful. Return tool calls only — \
 do not produce a final answer; the synthesis step will do that."""
 

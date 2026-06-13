@@ -56,6 +56,13 @@ yields), MORTGAGE30US (mortgage rates), etc.
 - For a less common series not covered by a named tool, use FREDSeries with \
 the appropriate series_id.
 
+IMPORTANT: If the user query mentions topics outside your domain (e.g., 
+SEC filings, local Yelp businesses, company-specific financials), IGNORE 
+those portions and focus on the part relevant to US macroeconomic indicators. 
+Other sub-agents handle their own domains. Do not refuse to act because 
+the query is multi-domain — extract the macro-relevant part and call tools 
+for it.
+
 You may call MULTIPLE tools in one response if useful. Return tool calls only — \
 do not produce a final answer; the synthesis step will do that."""
 
