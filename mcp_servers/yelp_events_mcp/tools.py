@@ -18,8 +18,6 @@ only for Philadelphia and Tampa (ADR-007).
 
 from __future__ import annotations
 
-import json
-
 from psycopg.rows import dict_row
 
 from .db import get_connection
@@ -274,12 +272,12 @@ def find_businesses_by_category(
 ) -> BusinessSearchResult:
     """Find businesses in a city that carry a given Yelp category.
 
-    Matches city case-insensitively and requires the business's categories
-    array to contain `category` (exact category-string match via the JSONB
-    containment operator). Filters to businesses with at least `min_reviews`
-    reviews and returns the top `limit` ordered by review_count descending.
-    `total_found` reports how many businesses matched before the limit. No
-    matches returns an empty result, not an error.
+    Matches city case-insensitively and requires the business's normalized
+    categories_array column to contain `category` (exact element match).
+    The categories_array column was populated by Migration 002 from Yelp's
+    comma-separated categories string (see ADR-009). Filters to businesses
+    with at least `min_reviews` reviews and returns the top `limit` ordered
+    by review_count descending.
 
     Args:
         city: city name (case-insensitive), e.g. "Philadelphia".
@@ -313,12 +311,12 @@ def find_businesses_by_category(
                        COUNT(*) OVER() AS total_found
                 FROM businesses
                 WHERE LOWER(city) = LOWER(%(city)s)
-                  AND categories @> %(cat)s::jsonb
+                  AND %(cat)s = ANY(categories_array)
                   AND review_count >= %(minr)s
                 ORDER BY review_count DESC
                 LIMIT %(lim)s
                 """,
-                {"city": city, "cat": json.dumps([category]),
+                {"city": city, "cat": category,
                  "minr": min_reviews, "lim": limit},
             )
             rows = cur.fetchall()

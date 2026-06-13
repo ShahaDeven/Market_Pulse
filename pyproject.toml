@@ -44,3 +44,9 @@ packages = ["agent", "mcp_servers", "reviewer_ui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "mcp_servers"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-mock>=3.15.1",
+]
