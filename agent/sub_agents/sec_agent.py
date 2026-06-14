@@ -32,6 +32,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from ..mcp_client import get_mcp_client
 from ..state import AgentState
+from ..audit_log import write_event
+from ..confidence import judge_confidence
 
 log = structlog.get_logger(__name__)
 
@@ -104,6 +106,9 @@ async def sec_agent_node(state: AgentState) -> dict:
                 "results": [],
                 "note": "LLM did not request any tool calls for this query.",
                 "llm_text": getattr(response, "content", "")[:500],
+                "confidence": 0.0,
+                "confidence_reason": "Sub-agent did not call any tools",
+                "data_quality_flags": ["no_tool_calls"],
             },
             "tool_calls_made": [],
         }
@@ -163,8 +168,45 @@ async def sec_agent_node(state: AgentState) -> dict:
                 query_id=query_id, tool=name, error=str(exc),
             )
 
+    # Judge confidence in the gathered data
+    judgment = await judge_confidence(
+        agent="sec",
+        user_query=user_query,
+        tool_calls=tool_calls_record,
+        results=results,
+        errors=errors,
+    )
+
+    # Audit log the sub_agent_end event
+    try:
+        await write_event(
+            query_id=state["query_id"],
+            event_type="sub_agent_end",
+            actor="sec_agent",
+            payload={
+                "agent": "sec",
+                "n_calls": len(results),
+                "n_errors": len(errors),
+                "confidence": judgment.score,
+                "confidence_reason": judgment.reason,
+                "data_quality_flags": judgment.data_quality_flags,
+            },
+        )
+    except Exception as exc:
+        log.warning(
+            "audit_log_write_failed",
+            agent="sec",
+            error=str(exc),
+        )
+
     return {
-        "sec_data": {"results": results, "n_calls": len(results)},
+        "sec_data": {
+            "results": results,
+            "n_calls": len(results),
+            "confidence": judgment.score,
+            "confidence_reason": judgment.reason,
+            "data_quality_flags": judgment.data_quality_flags,
+        },
         "tool_calls_made": tool_calls_record,
         "errors": errors,
     }
@@ -186,6 +228,11 @@ if __name__ == "__main__":
         print("\n=== tool_calls_made ===")
         for c in update.get("tool_calls_made", []):
             print(f"  - {c['tool']}({c['input']})")
+        sec_data  = update.get("sec_data") or {}
+        print(f"\n=== confidence ===")
+        print(f"score: {sec_data.get('confidence')}")
+        print(f"reason: {sec_data.get('confidence_reason')}")
+        print(f"flags: {sec_data.get('data_quality_flags')}")
         print("\n=== errors ===")
         for e in update.get("errors", []):
             print(f"  - {e}")
