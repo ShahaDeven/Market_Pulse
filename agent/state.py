@@ -53,6 +53,29 @@ class AgentState(TypedDict, total=False):
     # Reserved for Day 6 synthesis
     final_memo: Optional[str]
 
+    # --- Human-in-the-loop (HITL) ---
+    # When any sub-agent's confidence is below the threshold (0.7), the graph
+    # pauses for human review. These fields carry the review state.
+
+    # The reviewer's decision, set by the CLI when it resumes the paused graph.
+    hitl_decision: Optional[Literal["approve", "reject", "retry"]]
+
+    # Optional free-text hint the reviewer supplies on a "retry" decision; the
+    # supervisor reads it to inform re-routing (Option Y / informed retry).
+    hitl_retry_hint: Optional[str]
+
+    # Append-only record of every sub-agent that has ever triggered HITL, e.g.
+    # {"agent": "yelp", "confidence": 0.45, "reason": "..."}. The `add` reducer
+    # accumulates these across iterations (same pattern as supervisor_log).
+    # check_confidence_node dedupes against this so an agent triggers HITL once.
+    hitl_low_confidence_agents: Annotated[list[dict], add]
+
+    # Transient routing signal (last-write-wins, NOT append): set by
+    # check_confidence_node each pass to tell _route_from_check_confidence
+    # whether this pass flagged a NEW low-confidence agent. Not part of the
+    # durable HITL record — it exists purely to drive the conditional edge.
+    hitl_pending: Optional[bool]
+
 
 def new_state(user_query: str) -> AgentState:
     """Create a fresh state for a new query.
@@ -71,4 +94,8 @@ def new_state(user_query: str) -> AgentState:
         supervisor_log=[],
         errors=[],
         final_memo=None,
+        hitl_decision=None,
+        hitl_retry_hint=None,
+        hitl_low_confidence_agents=[],
+        hitl_pending=None,
     )

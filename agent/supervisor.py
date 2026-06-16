@@ -70,6 +70,13 @@ You may sometimes need to call multiple sub-agents for a single query
 (e.g., "how is Chipotle doing in Philadelphia?" needs both yelp AND sec).
 Pick the most relevant agent FIRST.
 
+When a human reviewer has provided a hint for retry (the hitl_retry_hint
+field, surfaced in the state summary below), USE IT to inform your routing.
+The hint typically indicates which sub-agent to re-invoke or what aspect of
+the query needs more data. If the hint suggests a specific sub-agent or data
+source, route to that one. The retry hint is more authoritative than your
+prior routing decisions.
+
 You MUST also produce a one-sentence reasoning explaining your choice."""
 
 
@@ -110,6 +117,23 @@ def _build_state_summary(state: AgentState) -> str:
     if state.get("supervisor_log"):
         recent = state["supervisor_log"][-3:]  # last 3 decisions
         parts.append(f"Recent supervisor decisions: {recent}")
+
+    # HITL context: surface low-confidence history and any reviewer retry hint
+    # so the supervisor can re-route intelligently after a human review.
+    low_conf = state.get("hitl_low_confidence_agents")
+    if low_conf:
+        flagged = ", ".join(
+            f"{e['agent']} (confidence {e['confidence']:.2f})" for e in low_conf
+        )
+        parts.append(
+            f"Previously triggered HITL for low-confidence sub-agents: {flagged}"
+        )
+
+    retry_hint = state.get("hitl_retry_hint")
+    if retry_hint:
+        parts.append(
+            f"Human reviewer provided this hint for the retry: {retry_hint}"
+        )
 
     return "\n".join(parts)
 

@@ -68,6 +68,11 @@ async def yelp_agent_node(state: AgentState) -> dict:
 
     log.info("yelp_agent_start", query_id=query_id, query=user_query)
 
+    # Read and consume the retry hint (if present from HITL retry decision)
+    retry_hint = state.get("hitl_retry_hint") or ""
+    if retry_hint:
+        log.info("yelp_agent_using_retry_hint", query_id=query_id, hint=retry_hint)
+
     client = get_mcp_client()
     tools = await client.get_tools(server_name="yelp-events")
 
@@ -80,9 +85,20 @@ async def yelp_agent_node(state: AgentState) -> dict:
 
     llm_with_tools = _yelp_llm.bind_tools(tools)
 
+    # Build user message, prepending the retry hint if present
+    if retry_hint:
+        user_message_content = (
+            f"[HUMAN REVIEWER RETRY HINT]: {retry_hint}\n\n"
+            f"This is a retry — the previous attempt didn't fully answer the query. "
+            f"Use the hint above to guide your tool selection and parameters.\n\n"
+            f"[USER QUERY]: {user_query}"
+        )
+    else:
+        user_message_content = user_query
+
     response = await llm_with_tools.ainvoke([
         SystemMessage(content=YELP_SYSTEM_PROMPT),
-        HumanMessage(content=user_query),
+        HumanMessage(content=user_message_content),
     ])
 
     tool_calls = getattr(response, "tool_calls", []) or []
@@ -103,6 +119,8 @@ async def yelp_agent_node(state: AgentState) -> dict:
                 "data_quality_flags": ["no_tool_calls"],
             },
             "tool_calls_made": [],
+            "errors": [],
+            "hitl_retry_hint": None,  # consume the hint after using it
         }
 
     # Build a name → tool lookup for execution
@@ -201,6 +219,7 @@ async def yelp_agent_node(state: AgentState) -> dict:
         },
         "tool_calls_made": tool_calls_record,
         "errors": errors,
+        "hitl_retry_hint": None
     }
 
 

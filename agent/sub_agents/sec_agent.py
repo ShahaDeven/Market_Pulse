@@ -74,6 +74,11 @@ async def sec_agent_node(state: AgentState) -> dict:
     query_id = state["query_id"]
     user_query = state["user_query"]
 
+    # Read and consume the retry hint (if present from HITL retry decision)
+    retry_hint = state.get("hitl_retry_hint") or ""
+    if retry_hint:
+        log.info("sec_agent_using_retry_hint", query_id=query_id, hint=retry_hint)
+
     log.info("sec_agent_start", query_id=query_id, query=user_query)
 
     client = get_mcp_client()
@@ -88,9 +93,20 @@ async def sec_agent_node(state: AgentState) -> dict:
 
     llm_with_tools = _sec_llm.bind_tools(tools)
 
+    # Build user message, prepending the retry hint if present
+    if retry_hint:
+        user_message_content = (
+            f"[HUMAN REVIEWER RETRY HINT]: {retry_hint}\n\n"
+            f"This is a retry — the previous attempt didn't fully answer the query. "
+            f"Use the hint above to guide your tool selection and parameters.\n\n"
+            f"[USER QUERY]: {user_query}"
+        )
+    else:
+        user_message_content = user_query
+
     response = await llm_with_tools.ainvoke([
         SystemMessage(content=SEC_SYSTEM_PROMPT),
-        HumanMessage(content=user_query),
+        HumanMessage(content=user_message_content),
     ])
 
     tool_calls = getattr(response, "tool_calls", []) or []
@@ -111,6 +127,8 @@ async def sec_agent_node(state: AgentState) -> dict:
                 "data_quality_flags": ["no_tool_calls"],
             },
             "tool_calls_made": [],
+            "errors": [],
+            "hitl_retry_hint": None,
         }
 
     # Build a name → tool lookup for execution
@@ -209,6 +227,7 @@ async def sec_agent_node(state: AgentState) -> dict:
         },
         "tool_calls_made": tool_calls_record,
         "errors": errors,
+        "hitl_retry_hint": None,
     }
 
 
