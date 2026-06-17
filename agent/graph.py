@@ -11,8 +11,9 @@ Key design choices (see ADRs and Day 4 design docs):
   supervisor's "synthesize" or "done" decision gets stuck.
 - Sub-agents are SCC nodes — they run, populate their data slot, and
   unconditionally route back to supervisor.
-- synthesize_node is a STUB in Day 4. Day 6 replaces it with real synthesis
-  that consumes the gathered sub-agent data and produces final_memo.
+- synthesize_node (Day 6) runs real synthesis: it consumes the gathered
+  sub-agent data, calls Claude Sonnet 4.5 to produce a structured Memo, and
+  writes it to final_memo as JSON.
 """
 
 from __future__ import annotations
@@ -29,6 +30,8 @@ from .sub_agents.fred_agent import fred_agent_node
 from .sub_agents.sec_agent import sec_agent_node
 from .sub_agents.yelp_agent import yelp_agent_node
 from .supervisor import supervisor_node
+from .synthesize import synthesize
+from .audit_log import write_event
 
 log = structlog.get_logger(__name__)
 
@@ -43,34 +46,42 @@ MAX_SUPERVISOR_ITERATIONS = 5
 HITL_CONFIDENCE_THRESHOLD = 0.7
 
 
-async def synthesize_stub_node(state: AgentState) -> dict:
-    """STUB synthesis node — Day 4 skeleton only.
+async def synthesize_node(state: AgentState) -> dict:
+    """Real synthesis node — replaces the Day 4 stub.
 
-    Writes a placeholder to final_memo and ends the flow. Day 6 will replace
-    this with a real synthesis step that consumes the gathered sub-agent data
-    and produces a structured memo.
+    Calls synthesize() to produce a Memo, stores it as JSON in
+    state.final_memo, and writes a synthesis event to the audit log.
     """
+    query_id = state.get("query_id")
+    log.info("synthesize_node_start", query_id=query_id)
+
+    memo = await synthesize(state)
+    final_memo_json = memo.model_dump_json(indent=2)
+
+    # Audit log the synthesis event (simple payload, no row-id citations).
+    try:
+        await write_event(
+            query_id=query_id,
+            event_type="synthesis",
+            actor="synthesize",
+            payload={
+                "n_findings": len(memo.findings),
+                "data_sources_used": memo.data_sources_used,
+                "caveats_count": len(memo.caveats),
+                "executive_summary": memo.executive_summary[:200],
+            },
+        )
+    except Exception as exc:
+        log.warning("audit_log_write_failed", actor="synthesize", error=str(exc))
+
     log.info(
-        "synthesize_stub_invoked",
-        query_id=state.get("query_id"),
-        agents_with_data=[
-            a for a in ("yelp", "sec", "fred") if state.get(f"{a}_data") is not None
-        ],
+        "synthesize_node_ok",
+        query_id=query_id,
+        n_findings=len(memo.findings),
+        data_sources_used=memo.data_sources_used,
     )
 
-    gathered = {}
-    for agent in ("yelp", "sec", "fred"):
-        data = state.get(f"{agent}_data")
-        if data is not None:
-            gathered[agent] = data
-
-    stub_memo = (
-        f"[Day 4 stub] Gathered data from {len(gathered)} sub-agent(s): "
-        f"{', '.join(gathered.keys()) or 'none'}. "
-        f"Real synthesis will replace this in Day 6."
-    )
-
-    return {"final_memo": stub_memo, "target_agent": "done"}
+    return {"final_memo": final_memo_json, "target_agent": "done"}
 
 
 def check_confidence_node(state: AgentState) -> dict:
@@ -243,7 +254,7 @@ def build_graph():
     graph.add_node("fred_agent", fred_agent_node)
     graph.add_node("check_confidence", check_confidence_node)
     graph.add_node("hitl", hitl_node)
-    graph.add_node("synthesize", synthesize_stub_node)
+    graph.add_node("synthesize", synthesize_node)
 
     # START → supervisor (always)
     graph.add_edge(START, "supervisor")
