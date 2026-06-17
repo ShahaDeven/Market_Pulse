@@ -301,9 +301,6 @@ def _print_summary(acc: _RunAccumulator, verbose: bool) -> None:
                     dumped = dumped[:500] + "\n  ... (truncated)"
                 print(f"  {slot}:\n{dumped}", file=out)
 
-    print("\nFinal memo:", file=out)
-    print(acc.final_memo if acc.final_memo is not None else "(none produced)", file=out)
-
 
 def _emit_json(acc: _RunAccumulator) -> None:
     """Emit the full run as a single JSON object on stdout."""
@@ -328,6 +325,94 @@ def _emit_json(acc: _RunAccumulator) -> None:
         ],
     }
     print(json.dumps(payload, indent=2, default=str))
+
+
+def print_memo(memo_json_str: str | None, *, verbose: bool = False) -> None:
+    """Pretty-print a memo JSON string to stdout.
+
+    Parses the JSON, then renders the memo with section headings, numbered
+    findings, and bulleted caveats. If verbose=True, ALSO dumps the raw JSON
+    at the bottom under a "MEMO (JSON)" heading.
+
+    If memo_json_str is None or empty, prints a brief notice that no memo was
+    produced (e.g. HITL rejection). If it's a non-empty string that fails to
+    parse as JSON, prints the raw string under a parse-failed heading.
+    """
+    out = sys.stdout
+    bar = "=" * 70
+
+    # Edge case 1: nothing to show (HITL rejection, no synthesis ran).
+    if not memo_json_str:
+        print("", file=out)
+        print(bar, file=out)
+        print("NO MEMO PRODUCED", file=out)
+        print(bar, file=out)
+        print(
+            "The run terminated without synthesis (likely rejected during "
+            "human review or no sub-agents produced data).",
+            file=out,
+        )
+        return
+
+    # Edge case 2: malformed JSON — show the raw string rather than crashing.
+    try:
+        memo = json.loads(memo_json_str)
+    except json.JSONDecodeError:
+        print("", file=out)
+        print(bar, file=out)
+        print("MEMO (raw, parse failed)", file=out)
+        print(bar, file=out)
+        print(memo_json_str, file=out)
+        return
+
+    print("", file=out)
+    print(bar, file=out)
+    print("MEMO", file=out)
+    print(bar, file=out)
+
+    print("\nEXECUTIVE SUMMARY", file=out)
+    print("-" * 17, file=out)
+    print(memo.get("executive_summary", "(missing)"), file=out)
+
+    print("\nKEY FINDINGS", file=out)
+    print("-" * 12, file=out)
+    findings = memo.get("findings") or []
+    if findings:
+        for i, finding in enumerate(findings, 1):
+            print(f"{i}. {finding.get('headline', '(no headline)')}", file=out)
+            print(f"   {finding.get('detail', '')}", file=out)
+            print(f"   Source: {finding.get('citation', '(uncited)')}", file=out)
+            if i < len(findings):
+                print("", file=out)
+    else:
+        print("(none)", file=out)
+
+    print("\nDATA SOURCES", file=out)
+    print("-" * 12, file=out)
+    print(", ".join(memo.get("data_sources_used") or []) or "(none)", file=out)
+
+    # Edge case 3: omit the CAVEATS section entirely when there are none —
+    # reads cleaner than a "(none)" placeholder.
+    caveats = memo.get("caveats") or []
+    if caveats:
+        print("\nCAVEATS", file=out)
+        print("-" * 7, file=out)
+        for caveat in caveats:
+            print(f"- {caveat}", file=out)
+
+    print("\nCONFIDENCE", file=out)
+    print("-" * 10, file=out)
+    print(memo.get("confidence_summary", "(missing)"), file=out)
+
+    print("", file=out)
+    print(bar, file=out)
+
+    if verbose:
+        print("", file=out)
+        print(bar, file=out)
+        print("MEMO (JSON)", file=out)
+        print(bar, file=out)
+        print(json.dumps(memo, indent=2), file=out)
 
 
 async def run_query(
@@ -430,10 +515,13 @@ async def run_query(
     # a CLI failure — they're reported in the summary but we still exit 0.
     if as_json:
         _emit_json(acc)
-    elif quiet:
-        print(acc.final_memo if acc.final_memo is not None else "(none produced)")
     else:
-        _print_summary(acc, verbose=verbose)
+        # --quiet skips the SUMMARY section but still prints the formatted memo.
+        # Default prints both; --verbose additionally dumps the raw memo JSON
+        # (handled inside print_memo via its verbose flag).
+        if not quiet:
+            _print_summary(acc, verbose=verbose)
+        print_memo(acc.final_memo, verbose=verbose)
 
     return 0
 
