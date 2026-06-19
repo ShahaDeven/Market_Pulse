@@ -1,0 +1,92 @@
+# Golden memo for the simplest yelp query type.
+#
+# QUERY TYPE: Single-source, single-tool, no HITL expected.
+# This is the baseline "happy path" eval — if this fails, the agent has
+# basic functional issues. If this passes but other goldens fail, the
+# issues are in multi-source / HITL / synthesis edge cases.
+
+query: "Find coffee shops in Philadelphia"
+
+expected_memo:
+  executive_summary: |
+    Philadelphia has a robust coffee shop market with 344 businesses
+    cataloged in the Yelp dataset under the 'Coffee & Tea' category. The
+    top-reviewed establishments include Reading Terminal Market (5,721
+    reviews, 4.5 stars), Cafe La Maude (1,485 reviews, 4.5 stars), and
+    Gran Caffe L'Aquila (1,138 reviews, 4.5 stars), reflecting both
+    dedicated coffee venues and full-service cafes.
+
+  findings:
+    - headline: |
+        Philadelphia has 344 coffee and tea businesses in the Yelp
+        2022 snapshot.
+      detail: |
+        A category-based search for 'Coffee & Tea' in Philadelphia
+        returned 344 businesses. The dataset includes dedicated coffee
+        roasters, full-service cafés, tea houses, and food markets
+        serving coffee — representing the breadth of the local coffee
+        market as captured in the 2022 snapshot.
+      citation: "yelp:find_businesses_by_category"
+
+    - headline: |
+        Reading Terminal Market is the top result by review count with
+        5,721 reviews and a 4.5-star rating.
+      detail: |
+        Reading Terminal Market — a historic public market with multiple
+        coffee and tea vendors — has the highest review count (5,721)
+        among Philadelphia 'Coffee & Tea' businesses, with a 4.5-star
+        average rating. While not exclusively a coffee shop, its
+        inclusion in the category reflects its consumer prominence.
+      citation: "yelp:find_businesses_by_category"
+
+    - headline: |
+        Multiple highly-rated cafés appear in the top 20 results,
+        including Cafe La Maude and Gran Caffe L'Aquila (both 4.5 stars).
+      detail: |
+        Cafe La Maude (1,485 reviews, 4.5 stars) and Gran Caffe L'Aquila
+        (1,138 reviews, 4.5 stars) demonstrate Philadelphia's full-service
+        café market, where coffee is part of a broader food and beverage
+        offering. Both maintain strong customer ratings indicating high
+        consumer satisfaction.
+      citation: "yelp:find_businesses_by_category"
+
+  data_sources_used:
+    - "yelp"
+
+  caveats:
+    - "Yelp data is a 2022 snapshot scoped to Philadelphia and Tampa; current business status, ratings, and review counts may differ."
+    - "The 'Coffee & Tea' category captures a broad range of establishments including markets and full-service cafés, not only dedicated coffee shops."
+    - "The top 20 of 344 businesses are surfaced; full pagination would be required to capture the long tail."
+
+  confidence_summary: |
+    The Yelp sub-agent scored 0.75 confidence with flags for
+    partial_match and stale_data, reflecting that results were
+    truncated to the top 20 and rely on a 2022 snapshot. The
+    findings are directly grounded in the tool output.
+
+notes: |
+  PASSING CRITERIA for this query:
+
+  - data_sources_used MUST equal ["yelp"]. If it includes "sec" or "fred",
+    the agent over-engineered the routing.
+
+  - At least 1 finding citing yelp:find_businesses_by_category. The agent
+    may add more findings about specific businesses — that's fine and
+    indicates good detail.
+
+  - caveats MUST mention either "2022 snapshot" or equivalent (the Yelp
+    data freshness limitation). If absent, the agent is failing to
+    surface known limitations.
+
+  - confidence_summary should echo the sub-agent's confidence score
+    (~0.75) — exact match not required, but the directional claim
+    "Yelp confidence around 0.75" should be present.
+
+  - findings should be GROUNDED. Specific numbers like 5,721 reviews or
+    344 total businesses are correct if mentioned. Hallucinated numbers
+    (e.g., "5000 coffee shops") are a faithfulness failure.
+
+  WHAT'S NOT REQUIRED:
+  - The same finding headlines (rewording is fine)
+  - The same number of findings (3-5 is the reasonable range)
+  - Identical caveat wording

@@ -1,0 +1,5 @@
+# Don't commit eval results — they're regeneratable, machine-specific
+# (Anthropic API outputs are non-deterministic even at temperature=0),
+# and would balloon the repo. The directory is created by the runner
+# on first invocation.
+results/

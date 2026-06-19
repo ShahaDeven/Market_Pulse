@@ -1,0 +1,86 @@
+# Golden memo for a multi-source query.
+#
+# QUERY TYPE: Multi-source (yelp + fred), no HITL expected if each
+# sub-agent gathers its part competently.
+# This tests: supervisor's routing across sub-agents, synthesis combining
+# data from multiple domains into one coherent memo, citation discipline
+# across sources, balanced caveats.
+
+query: "What's the most-reviewed coffee shop in Philadelphia, and what's the current US unemployment rate?"
+
+expected_memo:
+  executive_summary: |
+    Reading Terminal Market is Philadelphia's most-reviewed coffee/tea
+    business in the Yelp dataset with 5,721 reviews at 4.5 stars. The
+    US unemployment rate, per the latest FRED UNRATE data, is 3.9%
+    (as of May 2024).
+
+  findings:
+    - headline: |
+        Reading Terminal Market leads Philadelphia's coffee shop
+        market by review count with 5,721 reviews at 4.5 stars.
+      detail: |
+        Among Philadelphia businesses tagged 'Coffee & Tea' in the
+        Yelp dataset, Reading Terminal Market has the highest review
+        count (5,721) with a 4.5-star average rating. It is a historic
+        public market featuring multiple coffee vendors.
+      citation: "yelp:find_businesses_by_category"
+
+    - headline: |
+        The US unemployment rate (UNRATE) is 3.9% as of May 2024.
+      detail: |
+        Per FRED's UNRATE series, the most recent US unemployment rate
+        is 3.9%, reported May 2024. This represents the seasonally
+        adjusted national rate.
+      citation: "fred:UNRATE"
+
+  data_sources_used:
+    - "yelp"
+    - "fred"
+
+  caveats:
+    - "Yelp data is a 2022 snapshot scoped to Philadelphia and Tampa; current ratings and review counts may differ."
+    - "The FRED unemployment rate reflects the latest available data point, not a trend window. Historical context would require additional FRED queries."
+    - "The two findings are independent (consumer attention vs macro labor data) — no causal link is implied by their co-presence."
+
+  confidence_summary: |
+    The Yelp sub-agent scored ~0.75 confidence (business identification
+    is high-confidence; the 2022 snapshot is a noted limitation). The
+    FRED sub-agent's confidence varies based on whether multi-window
+    data was retrieved; for a single-rate query, ~0.65 is typical,
+    flagged for not providing trend context. Both sub-agents
+    contributed directly grounded findings.
+
+notes: |
+  PASSING CRITERIA for this query:
+
+  - data_sources_used MUST include BOTH "yelp" and "fred". If only one,
+    the supervisor failed to route to the other sub-agent.
+
+  - At least 1 finding from yelp:find_businesses_by_category AND at
+    least 1 finding citing a fred series (UNRATE is the expected one).
+
+  - The two findings should be CLEARLY SEPARATED in the memo — not
+    blended into a single confusing "Philadelphia coffee unemployment"
+    finding. This is a common synthesis failure to watch for.
+
+  - caveats should include the Yelp 2022 snapshot AND something noting
+    that the unemployment number is a single point, not a trend. The
+    second caveat is more lenient — partial credit.
+
+  - The executive_summary should mention BOTH topics. A summary that
+    only mentions Reading Terminal OR only unemployment is a coverage
+    failure.
+
+  - No causal/correlational claim should appear (e.g., "Philadelphia's
+    coffee market reflects national unemployment trends"). The two
+    domains are independent.
+
+  POTENTIAL FAILURE MODES TO WATCH FOR:
+  - The supervisor routes only to yelp because the query mentions coffee
+    first (sub-agent ordering bias).
+  - The synthesis blends the two domains into a single nonsensical
+    finding.
+  - The agent skips the caveat about the unemployment data being a
+    snapshot rather than a trend.
+  - The agent attempts to draw a causal link between the two domains.
