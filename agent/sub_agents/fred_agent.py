@@ -168,7 +168,7 @@ async def fred_agent_node(state: AgentState) -> dict:
                 "agent": "fred",
                 "tool": name,
                 "input": args,
-                "output_preview": str(serialized)[:200],
+                "output_preview": str(serialized)[:4000],
                 "call_id": call_id,
             })
             log.info(

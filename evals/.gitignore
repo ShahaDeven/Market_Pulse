@@ -3,3 +3,4 @@
 # and would balloon the repo. The directory is created by the runner
 # on first invocation.
 results/
+scored/
