@@ -51,8 +51,12 @@ key metrics, segment data, insider trading (Form 4), and XBRL concepts — \
 pick the most relevant one(s).
 
 GUIDANCE:
-- If the query references a company by TICKER, start with get_cik_by_ticker to \
-resolve the company, then use the resulting identifier with the other tools.
+- get_cik_by_ticker is for resolving a ticker to a CIK when no other path 
+  exists. For queries asking about filings/financials, you can call BOTH 
+  get_cik_by_ticker AND the filings/financials tool IN PARALLEL in a single 
+  response, using the ticker as the identifier for the filings tool (most 
+  filings tools accept either CIK or ticker as identifier). Only call 
+  get_cik_by_ticker alone if there's literally nothing else to do.
 - Match the tool to the question: 10-K/10-Q financials → get_financials or \
 get_key_metrics; recent events → get_recent_filings / analyze_8k; insider \
 activity → get_insider_summary or the Form 4 tools.
@@ -97,8 +101,15 @@ async def sec_agent_node(state: AgentState) -> dict:
     if retry_hint:
         user_message_content = (
             f"[HUMAN REVIEWER RETRY HINT]: {retry_hint}\n\n"
-            f"This is a retry — the previous attempt didn't fully answer the query. "
-            f"Use the hint above to guide your tool selection and parameters.\n\n"
+            f"This is a retry. The reviewer has explicitly instructed which "
+            f"tool(s) to call. The hint OVERRIDES your default tool selection — "
+            f"even if your system prompt would normally suggest a different "
+            f"approach.\n\n"
+            f"If the hint names specific tools, call those tools.\n"
+            f"If the hint requires data you don't have (e.g., it says 'use "
+            f"get_recent_filings' but you need a CIK first), call BOTH the "
+            f"lookup tool AND the target tool IN PARALLEL in a single "
+            f"response. Don't make the reviewer iterate.\n\n"
             f"[USER QUERY]: {user_query}"
         )
     else:

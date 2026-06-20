@@ -13,7 +13,6 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "streamlit>=1.40",
     "structlog>=24.0",
-
     # Agent layer dependencies (Day 4+)
     # langgraph: state graph orchestration with supervisor + sub-agent pattern
     # langchain-mcp-adapters: MCP client adapter for LangChain/LangGraph
@@ -28,6 +27,7 @@ dependencies = [
     "langchain-core>=0.3.0",
     "typing-extensions>=4.9",
     "python-dotenv>=1.0",
+    "streamlit-autorefresh>=1.0.1",
 ]
 
 [project.optional-dependencies]
