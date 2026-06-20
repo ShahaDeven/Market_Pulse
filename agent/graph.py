@@ -32,6 +32,7 @@ from .sub_agents.yelp_agent import yelp_agent_node
 from .supervisor import supervisor_node
 from .synthesize import synthesize
 from .audit_log import write_event
+from .memo_store import write_memo
 
 log = structlog.get_logger(__name__)
 
@@ -73,6 +74,16 @@ async def synthesize_node(state: AgentState) -> dict:
         )
     except Exception as exc:
         log.warning("audit_log_write_failed", actor="synthesize", error=str(exc))
+
+    # Persist the full memo to the memos artifact store. write_memo is
+    # best-effort (catches and logs its own DB errors) so a persistence failure
+    # here never crashes the run. Pass the Memo object — write_memo serializes.
+    await write_memo(
+        query_id=query_id,
+        user_query=state.get("user_query"),
+        memo=memo,
+        outcome="synthesized",
+    )
 
     log.info(
         "synthesize_node_ok",
