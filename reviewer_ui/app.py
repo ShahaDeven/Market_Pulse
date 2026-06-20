@@ -61,15 +61,16 @@ OUTCOME_BADGE = {
     "error": "⚠️ error",
 }
 
-# Icon per node for the live event timeline.
-_NODE_ICON = {
-    "supervisor": "🔍",
-    "yelp_agent": "🛠️",
-    "sec_agent": "🛠️",
-    "fred_agent": "🛠️",
-    "check_confidence": "🧮",
-    "synthesize": "📝",
-    "hitl": "⏸",
+# Text label per node for the live event timeline. Fixed-width when rendered
+# in backticks so the label column lines up; longest is "[confidence]" (12).
+_NODE_LABEL = {
+    "supervisor": "[supervisor]",
+    "yelp_agent": "[yelp]",
+    "sec_agent": "[sec]",
+    "fred_agent": "[fred]",
+    "check_confidence": "[confidence]",
+    "synthesize": "[synthesize]",
+    "hitl": "[hitl]",
 }
 
 # How often (ms) the running phase polls the agent thread for new events.
@@ -226,64 +227,132 @@ def _render_past_runs() -> None:
 # ============================================================================
 
 
-def format_event(event: dict) -> str:
-    """One-line display string for a streamed event.
+def _format_elapsed(event_time: float, start_time: float) -> str:
+    """Relative time string like '+0s', '+12s', '+1m 23s'.
 
-    Events arrive as {node_name: state_update} dicts (LangGraph updates mode
-    yields one node per event). We pull the most informative bit from the
-    node's delta — matching the same state shape agent/cli.py formats.
+    abs() so it's safe whether called with (event_time, start) — time since the
+    run began — or (now, last_event_time) — time since the last event.
+    """
+    seconds = int(abs(event_time - start_time))
+    if seconds < 60:
+        return f"+{seconds}s"
+    minutes, secs = divmod(seconds, 60)
+    return f"+{minutes}m {secs}s"
+
+
+def format_event(event: dict, event_time: float, start_time: float) -> Optional[dict]:
+    """Structured one-event view for the timeline.
+
+    Returns {"label", "summary", "detail", "elapsed_str"} or None if the event
+    has nothing to show. ``summary`` is the headline line; ``detail`` is the
+    indented secondary line (reasoning / tool names / counts). Events arrive as
+    {node_name: state_update} dicts (LangGraph updates mode yields one node per
+    event).
+
+    Note: takes event_time AND start_time. The spec's two-arg signature can't
+    produce a correct per-event timestamp while iterating (time, event) tuples,
+    so event_time is threaded through to compute elapsed_str here.
     """
     for node, update in event.items():
         if not isinstance(update, dict):
             continue
-        return _format_node(node, update)
-    return ""
 
+        label = _NODE_LABEL.get(node, f"[{node}]")
+        summary = "node executed"
+        detail = ""
 
-def _format_node(node: str, update: dict) -> str:
-    icon = _NODE_ICON.get(node, "•")
+        if node == "supervisor":
+            target = update.get("target_agent")
+            summary = f"route to {target}" if target else "deciding"
+            decisions = update.get("supervisor_log") or []
+            detail = decisions[-1][:200] if decisions else ""
 
-    if node == "supervisor":
-        decisions = update.get("supervisor_log") or []
-        if decisions:
-            return f"{icon} supervisor → {decisions[-1]}"
-        target = update.get("target_agent")
-        return f"{icon} supervisor → route to {target}" if target else f"{icon} supervisor → deciding"
+        elif node in ("yelp_agent", "sec_agent", "fred_agent"):
+            agent = node[:-6]  # strip "_agent" → yelp|sec|fred
+            tool_calls = update.get("tool_calls_made") or []
+            n_calls = len(tool_calls)
+            confidence = (update.get(f"{agent}_data") or {}).get("confidence")
+            if confidence is None:
+                summary = "running..."
+            else:
+                summary = f"{n_calls} tool call(s), confidence {confidence:.2f}"
+            detail = ", ".join(c.get("tool") for c in tool_calls if c.get("tool"))
 
-    if node in ("yelp_agent", "sec_agent", "fred_agent"):
-        agent = node[:-6]  # strip the "_agent" suffix → yelp|sec|fred
-        n_calls = len(update.get("tool_calls_made") or [])
-        confidence = (update.get(f"{agent}_data") or {}).get("confidence")
-        if confidence is not None:
-            return f"✅ {node} → {n_calls} tool call(s), confidence {confidence:.2f}"
-        return f"{icon} {node} → {n_calls} tool call(s)"
+        elif node == "check_confidence":
+            if update.get("hitl_pending"):
+                summary = "HITL triggered"
+                agents = update.get("hitl_low_confidence_agents") or []
+                detail = ", ".join(a.get("agent", "") for a in agents)
+            else:
+                summary = "confidence OK"
 
-    if node == "check_confidence":
-        if update.get("hitl_pending"):
-            return f"{icon} check_confidence → HITL triggered"
-        return f"{icon} check_confidence → confidence OK"
+        elif node == "synthesize":
+            if update.get("final_memo"):
+                summary = "memo complete"
+                try:
+                    memo = json.loads(update["final_memo"])
+                    detail = f"{len(memo.get('findings') or [])} finding(s)"
+                except (json.JSONDecodeError, TypeError):
+                    detail = ""
+            else:
+                summary = "synthesizing..."
 
-    if node == "synthesize":
-        if update.get("final_memo"):
-            return f"{icon} synthesize → memo complete"
-        return f"{icon} synthesize → synthesizing"
+        elif node == "hitl":
+            summary = "awaiting reviewer"
 
-    if node == "hitl":
-        return f"{icon} hitl → awaiting review"
+        return {
+            "label": label,
+            "summary": summary,
+            "detail": detail,
+            "elapsed_str": _format_elapsed(event_time, start_time),
+        }
 
-    return f"{icon} {node}"
+    return None
 
 
 def _render_event_log() -> None:
-    """Render the accumulated events as a vertical timeline."""
+    """Render the accumulated events as a vertical timeline.
+
+    Each event is a (arrival_time, event) tuple. Renders an aligned
+    `+elapsed` `[label]` summary line, with an optional indented grey detail
+    line beneath. While running, shows an inline 'still working' note if no
+    event has arrived for >10s.
+    """
     events = st.session_state.events
+    start = st.session_state.started_at or time.time()
+    last_event_time = start
+
     if not events:
-        st.caption("Waiting for the first event…")
-        return
-    for event in events:
-        line = format_event(event)
-        if line:
-            st.markdown(line)
+        st.caption("Waiting for the first event...")
+    else:
+        for event_time, event in events:
+            formatted = format_event(event, event_time, start)
+            if not formatted:
+                continue
+            last_event_time = event_time
+
+            label = formatted["label"]
+            summary = formatted["summary"]
+            elapsed = formatted["elapsed_str"]
+            # Backticks render monospaced; widths align the columns visually.
+            st.markdown(f"`{elapsed:>6}` `{label:<12}` {summary}")
+
+            if formatted["detail"]:
+                # Indented, small, grey — the one place we drop to inline HTML
+                # so the detail visually nests under its event.
+                st.markdown(
+                    f"<div style='padding-left:5em; color:#888'>"
+                    f"<small>{formatted['detail']}</small></div>",
+                    unsafe_allow_html=True,
+                )
+
+    # Inline loading indicator: while running, if nothing has arrived for >10s,
+    # note it. Updates on each 3s auto-refresh tick.
+    if st.session_state.phase == "running":
+        since_last = time.time() - last_event_time
+        if since_last > 10:
+            since_str = _format_elapsed(time.time(), last_event_time)
+            st.caption(f"_…still working… last event {since_str} ago_")
 
 
 # ============================================================================

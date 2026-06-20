@@ -113,8 +113,10 @@ def poll_runner() -> bool:
             ss.phase = "paused"
 
         # Ordinary node delta: keep it for the event log, capture any memo.
+        # Store (arrival_time, event) so the UI can show relative timestamps
+        # and detect stalls — presentation only; the event dict is unchanged.
         elif isinstance(item, dict):
-            ss.events.append(item)
+            ss.events.append((time.time(), item))
             for update in item.values():
                 if isinstance(update, dict) and update.get("final_memo"):
                     ss.final_memo_json = update["final_memo"]
