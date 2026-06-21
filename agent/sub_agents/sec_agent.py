@@ -51,14 +51,24 @@ key metrics, segment data, insider trading (Form 4), and XBRL concepts — \
 pick the most relevant one(s).
 
 GUIDANCE:
-- get_cik_by_ticker is for resolving a ticker to a CIK when no other path 
-  exists. For queries asking about filings/financials, you can call BOTH 
-  get_cik_by_ticker AND the filings/financials tool IN PARALLEL in a single 
-  response, using the ticker as the identifier for the filings tool (most 
-  filings tools accept either CIK or ticker as identifier). Only call 
-  get_cik_by_ticker alone if there's literally nothing else to do.
-- Match the tool to the question: 10-K/10-Q financials → get_financials or \
-get_key_metrics; recent events → get_recent_filings / analyze_8k; insider \
+- When the query names a public company, the filings/financials tools accept
+  the TICKER directly as the `identifier` argument — call them straight away
+  using the ticker (e.g. Chipotle=CMG, Apple=AAPL). For a query about filings
+  AND financial metrics, call get_recent_filings AND get_financials IN PARALLEL
+  in a single response, passing the ticker as identifier to both.
+- Do NOT use search_companies when you already know the company and can name
+  its ticker. search_companies is only for vague discovery ("find restaurant
+  companies") and returns EMPTY for many named issuers — it is the wrong tool
+  for a known public company.
+- get_cik_by_ticker only maps a ticker to a CIK; you rarely need it first,
+  because the filings/financials tools already accept the ticker. Call it only
+  if a specific tool requires a CIK you don't otherwise have.
+- Prefer get_financials over get_key_metrics for "key financial metrics":
+  get_financials returns the income statement and balance sheet (revenue, net
+  income, EPS, assets), whereas get_key_metrics can return empty for some
+  issuers.
+- Match the tool to the question: 10-K/10-Q financials → get_financials; \
+recent events / filings list → get_recent_filings / analyze_8k; insider \
 activity → get_insider_summary or the Form 4 tools.
 - Use the advanced XBRL tools only when a specific concept is requested.
 

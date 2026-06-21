@@ -38,7 +38,7 @@ import structlog
 from dotenv import load_dotenv
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 # Load .env so ANTHROPIC_API_KEY is available to the judge LLM. The runner gets
 # this for free via agent/__init__.py's load_dotenv(); the scorer never imports
@@ -61,7 +61,12 @@ class ScoreVerdict(BaseModel):
     """One judge's binary verdict on a single dimension."""
 
     passed: bool
-    reason: str = Field(max_length=300)
+    # No hard max_length: the dimension prompts ask the judge for a concise
+    # (<= 300 char) reason, but the judge occasionally exceeds that on
+    # multi-finding memos. A structured-output ValidationError on a purely
+    # explanatory field would abort the entire eval, so we keep this tolerant
+    # and rely on the prompt (and max_tokens) to bound length.
+    reason: str
 
 
 # Module-level judge LLM. Sonnet 4.5 (per synthesis), temperature=0 for the

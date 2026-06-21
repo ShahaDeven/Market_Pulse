@@ -1,0 +1,137 @@
+# Golden memo for a single-source, MULTI-TOOL query.
+#
+# QUERY TYPE: Single-source (sec), multi-tool, no HITL expected.
+# This tests the SEC sub-agent's parallel tool-calling: for a "filings AND
+# financial metrics" query it should call get_recent_filings AND get_financials
+# in ONE round, using the ticker as the identifier for both. It also tests that
+# synthesis keeps both tool results (an earlier truncation bug dropped the
+# second tool's output, so the metrics never reached the memo).
+#
+# This expected_memo is a SNAPSHOT of an actual agent run, not an idealized
+# target. The scorer matches semantically, so specific accession numbers and
+# metric values do not drive PASS/FAIL.
+# Snapshot of an actual agent run on 2026-06-21.
+# Filing dates and financial values reflect Sweetgreen's 10-Q for the period
+# ending 2026-03-29. These will drift as the company files new reports.
+# The scorer matches semantically, so drift does not break PASS/FAIL.
+
+query: "What are Sweetgreen's most recent filings and their key financial metrics?"
+
+expected_memo:
+  executive_summary: |
+    Sweetgreen, Inc. filed an 8-K on June 15, 2026, alongside multiple insider
+    trading reports (Form 4s). The most recent 10-Q (period ending March 29,
+    2026) shows revenue of $161.5 million, net income of $125.8 million, and
+    diluted EPS of $1.05, with total assets of $912.7 million and stockholders'
+    equity of $488.9 million.
+
+  findings:
+    - headline: |
+        Sweetgreen's most recent material filing is an 8-K dated June 15, 2026.
+      detail: |
+        The SEC sub-agent retrieved 10 recent filings for Sweetgreen (ticker SG,
+        CIK 1477815). The most recent substantive filing is an 8-K (accession
+        number 0001628280-26-043310) filed on June 15, 2026, with a period of
+        report of June 11, 2026. The same date saw multiple Form 4 insider
+        trading reports filed by various individuals.
+      citation: "sec:get_recent_filings"
+
+    - headline: |
+        Sweetgreen reported quarterly revenue of $161.5 million for the period
+        ending March 29, 2026.
+      detail: |
+        The 10-Q income statement shows
+        RevenueFromContractWithCustomerExcludingAssessedTax of $161,521,000 for
+        the period ending March 29, 2026. This data was extracted via XBRL from
+        the most recent quarterly filing.
+      citation: "sec:get_financials"
+
+    - headline: |
+        Net income for the quarter ending March 29, 2026 was $125.8 million,
+        with diluted EPS of $1.05.
+      detail: |
+        The income statement from the 10-Q shows NetIncomeLoss of $125,809,000
+        and EarningsPerShareDiluted of $1.05 for the period ending March 29,
+        2026. Operating income was $34,346,000. Basic EPS was $1.06.
+      citation: "sec:get_financials"
+
+    - headline: |
+        Sweetgreen held total assets of $912.7 million and stockholders' equity
+        of $488.9 million as of March 29, 2026.
+      detail: |
+        The balance sheet from the 10-Q shows total Assets of $912,691,000,
+        total Liabilities of $423,760,000, and StockholdersEquity of
+        $488,931,000 as of March 29, 2026. Current assets were $175,313,000,
+        including cash and cash equivalents of $156,799,000.
+      citation: "sec:get_financials"
+
+    - headline: |
+        Operating cash flow for the quarter ending March 29, 2026 was
+        $17.2 million.
+      detail: |
+        The cash flow statement from the 10-Q shows
+        NetCashProvidedByUsedInOperatingActivities of $17,163,000 for the period
+        ending March 29, 2026. This reflects the company's ability to generate
+        cash from core operations during the quarter.
+      citation: "sec:get_financials"
+
+  data_sources_used:
+    - "sec"
+
+  caveats:
+    - "SEC sub-agent flagged 'partial_match' in data quality, indicating possible incomplete coverage of all requested metrics."
+    - "Financial data is from the 10-Q for the period ending March 29, 2026; more recent quarterly data may not yet be filed."
+    - "The 8-K filing content was not retrieved, only metadata; the specific event triggering the 8-K is unknown from this analysis."
+
+  confidence_summary: |
+    The SEC sub-agent reported confidence of 0.85, successfully retrieving
+    recent filings and financial metrics with no tool errors. The partial_match
+    flag suggests some requested details may be incomplete, but core filing
+    dates and key financials are directly sourced from XBRL data.
+
+notes: |
+  PASSING CRITERIA for this query:
+
+  - data_sources_used MUST equal ["sec"]. If it includes "yelp" or
+    "fred", the agent over-engineered the routing.
+
+  - At least 2 tool calls expected: get_recent_filings AND either
+    get_key_metrics or get_financials. The agent should call BOTH
+    in parallel since both accept ticker as identifier.
+
+  - At least 1 finding citing sec:get_recent_filings AND at least 1
+    finding citing the metrics tool (sec:get_key_metrics or
+    sec:get_financials).
+
+  - Specific filing accession numbers and metric values, if mentioned,
+    should be grounded in tool output (faithfulness).
+
+  - caveats SHOULD mention either SEC data staleness OR that the
+    metrics represent a point-in-time snapshot. Not strictly required
+    but indicates good epistemic discipline.
+
+  - confidence_summary should reflect the sec sub-agent's actual
+    confidence score (likely 0.7-0.95 range).
+
+  - The two findings (filings vs metrics) should be CLEARLY SEPARATED
+    in the memo — not blended into a single "filings and metrics"
+    finding that conflates the two data types.
+
+  WHAT'S NOT REQUIRED:
+  - Exact accession numbers (those change over time)
+  - Exact metric values (those change with new filings)
+  - Same number of findings (2-5 is reasonable)
+
+  POTENTIAL FAILURE MODES TO WATCH FOR:
+  - The agent calls only get_recent_filings and skips the metrics
+    tool. This means the SEC prompt fix isn't fully working for
+    smaller/less-common companies.
+  - The agent calls get_cik_by_ticker first (chain pattern), gets
+    the CIK, then ends turn. This is the bug we fixed yesterday —
+    regression would surface here.
+  - The agent reaches for search_companies (name-based discovery),
+    which returns EMPTY for many named issuers including Sweetgreen.
+    The fix steers it to the ticker-based filings/financials tools.
+  - The synthesis blends filings and metrics into a single finding,
+    losing the data-type separation — OR drops the second tool's
+    result entirely (the per-tool truncation fix prevents this).

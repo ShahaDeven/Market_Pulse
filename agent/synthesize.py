@@ -27,8 +27,11 @@ from .state import AgentState
 
 log = structlog.get_logger(__name__)
 
-# Per-sub-agent data preview cap, so a chatty tool result can't balloon the
-# synthesis prompt past a reasonable size.
+# Per-TOOL-RESULT data preview cap, so a chatty tool result can't balloon the
+# synthesis prompt past a reasonable size. Applied to each tool result
+# individually (not the concatenated block) so that a large early result — e.g.
+# a long get_recent_filings list — cannot evict a later result — e.g.
+# get_financials — from the prompt entirely.
 _MAX_DATA_PREVIEW_CHARS = 4000
 
 # One retry on validation failure before falling back to a programmatic memo.
@@ -140,19 +143,21 @@ def _format_sub_agent_data(agent: str, data: dict | None) -> str:
         for item in results:
             tool = item.get("tool", "?")
             args = item.get("args", {})
+            # Truncate each tool result individually so every tool the sub-agent
+            # called is represented in the prompt — a single large result can no
+            # longer consume the whole budget and drop the others.
             result_preview = str(item.get("result", ""))
+            if len(result_preview) > _MAX_DATA_PREVIEW_CHARS:
+                result_preview = (
+                    result_preview[:_MAX_DATA_PREVIEW_CHARS]
+                    + f"... [truncated at {_MAX_DATA_PREVIEW_CHARS} chars]"
+                )
             lines.append(f"  - tool={tool} args={args}")
             lines.append(f"    result={result_preview}")
     elif not data.get("error") and not data.get("note"):
         lines.append("tool results: (none)")
 
-    rendered = "\n".join(lines)
-    if len(rendered) > _MAX_DATA_PREVIEW_CHARS:
-        rendered = (
-            rendered[:_MAX_DATA_PREVIEW_CHARS]
-            + f"\n... [truncated at {_MAX_DATA_PREVIEW_CHARS} chars]"
-        )
-    return rendered
+    return "\n".join(lines)
 
 
 def _build_synthesis_input(state: AgentState) -> str:
