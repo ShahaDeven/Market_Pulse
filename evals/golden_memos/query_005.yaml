@@ -1,0 +1,109 @@
+# Golden memo for a GEOGRAPHIC-MISMATCH edge case.
+#
+# QUERY TYPE: Single-domain (yelp), data NOT in the dataset.
+# The query is specific and clearly Yelp-relevant ("coffee shop" +
+# "review velocity"), but Boston is outside the Yelp 2022 snapshot (scoped
+# to Philadelphia and Tampa). This tests graceful failure on a SPECIFIC
+# out-of-scope query — distinct from query_004 (vague, no specifics).
+#
+# OBSERVED BEHAVIOR (2026-06-21 snapshot): the SUPERVISOR short-circuited.
+# It recognized at routing time that Boston is not in the dataset and routed
+# straight to synthesize, never invoking the Yelp sub-agent. So there were
+# ZERO tool calls and NO HITL (no sub-agent ran to produce a confidence
+# score). Synthesis produced an honest "no data / out of scope" memo with no
+# fabricated businesses and no silent city substitution.
+#
+# This expected_memo is a SNAPSHOT of an actual agent run, not an idealized
+# target. The scorer matches semantically against the agent's fresh run.
+
+query: "What's the review velocity for the most popular Boston coffee shop?"
+
+expected_memo:
+  executive_summary: |
+    No data was gathered to answer the query about review velocity for the
+    most popular Boston coffee shop. The Yelp sub-agent, which would be the
+    primary source for business reviews and popularity metrics, was not
+    invoked. Additionally, the Yelp dataset is a 2022 snapshot limited to
+    Philadelphia and Tampa, meaning Boston coffee shops would not be covered
+    even if the agent had been invoked.
+
+  findings:
+    - headline: |
+        No data available for Boston coffee shops due to geographic
+        limitations of the Yelp dataset.
+      detail: |
+        The Yelp dataset used by the system is a 2022 snapshot scoped
+        exclusively to Philadelphia and Tampa. Boston falls outside this
+        geographic coverage area, making it impossible to identify the most
+        popular coffee shop in Boston or calculate its review velocity using
+        the available data sources.
+      citation: "yelp:dataset_scope"
+
+  data_sources_used:
+    - "yelp"
+
+  caveats:
+    - "The Yelp dataset is a 2022 snapshot limited to Philadelphia and Tampa only; Boston is not covered."
+    - "No sub-agents were invoked to gather data for this query."
+    - "Review velocity calculations require time-series review data, which was not retrieved."
+
+  confidence_summary: |
+    Confidence in this analysis is effectively zero. No sub-agents were
+    invoked to gather data, and even if the Yelp agent had been called, the
+    dataset's geographic scope (Philadelphia and Tampa only) excludes Boston
+    entirely. The query cannot be answered with the available data sources.
+
+notes: |
+  PASSING CRITERIA for this query (geographic-mismatch edge case):
+
+  - data_sources_used SHOULD equal ["yelp"]. The query is clearly
+    yelp-relevant. If sec or fred appears, the supervisor
+    over-engineered.
+
+  - The memo MUST honestly report that Boston is not in the dataset.
+    Acceptable phrasings:
+      * "Boston is not in the Yelp 2022 snapshot"
+      * "No Boston businesses were found"
+      * "The dataset is scoped to Philadelphia and Tampa"
+
+  - NO city substitution. The memo MUST NOT silently report
+    Philadelphia/Tampa data as if it answers the Boston question.
+    This is a faithfulness failure regardless of how the data was
+    obtained.
+
+  - NO fabricated business names. Any business name in findings
+    must appear in tool output.
+
+  - confidence_summary MUST surface the low confidence (likely 0.1-
+    0.3 range) and the geographic-mismatch reason.
+
+  - At least 1 caveat explicitly mentioning the geographic scope
+    constraint.
+
+  WHAT'S NOT REQUIRED:
+  - Specific number of findings (0-2 is reasonable; the agent has
+    nothing to ground findings in)
+  - The exact phrasing of "Boston not in dataset"
+
+  POTENTIAL FAILURE MODES TO WATCH FOR:
+  - Agent substitutes Philadelphia coffee shop data and presents it
+    as the answer (REAL FAITHFULNESS BUG)
+  - Agent fabricates Boston coffee shop names (REAL FAITHFULNESS BUG)
+  - Memo glosses over the geographic mismatch and claims to have
+    answered the query (calibration failure)
+  - Agent doesn't trigger HITL because the LLM judge scores the
+    no-data case generously
+
+  KNOWN SCORING ARTIFACT POSSIBILITY:
+  If the agent makes 0 tool calls and synthesis emits a
+  yelp:no_tool_calls / yelp:dataset_scope sentinel citation (like
+  query_004), citation_correctness may FAIL. This is the same
+  documented gap as query_004 (evals/failures.md, F-001) — accepted,
+  not a bug.
+
+  OBSERVED VARIANT (2026-06-21): the supervisor recognized the
+  geographic mismatch at routing time and routed straight to
+  synthesize, so the Yelp sub-agent was never invoked, no tool calls
+  were made, and no HITL fired. This is the cleanest possible handling
+  (no wasted tool call, no fabrication) but it does produce the
+  sentinel-citation artifact above.
