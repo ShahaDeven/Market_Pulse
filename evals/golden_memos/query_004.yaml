@@ -1,0 +1,87 @@
+# Golden memo for a VAGUE, HITL-triggering query.
+#
+# QUERY TYPE: Single-source (yelp), HITL EXPECTED.
+# The query is intentionally under-specified — no city, no metric, no
+# concrete question. The Yelp sub-agent recognizes the domain but cannot
+# act without a city (the dataset is scoped to Philadelphia and Tampa), so
+# it makes NO tool calls and scores confidence 0.0, which trips the HITL
+# gate. The eval runner auto-approves the interrupt; synthesis then produces
+# an HONEST "no data" memo rather than fabricating coffee shops.
+#
+# This expected_memo is a SNAPSHOT of an actual agent run, not an idealized
+# target. The scorer matches semantically against the agent's fresh run.
+# Snapshot of an actual agent run on 2026-06-21.
+
+query: "Tell me about coffee shops"
+
+expected_memo:
+  executive_summary: |
+    No data on coffee shops was gathered. The Yelp sub-agent was invoked but
+    did not execute any tool calls, resulting in zero findings about coffee
+    shop locations, ratings, or reviews. This memo cannot provide substantive
+    insights without underlying data.
+
+  findings:
+    - headline: |
+        No coffee shop data was retrieved by the Yelp sub-agent.
+      detail: |
+        The Yelp sub-agent was invoked to gather information about coffee shops
+        but did not call any tools. As a result, no business listings, review
+        counts, ratings, or other coffee shop metrics were collected. The query
+        cannot be answered without tool execution.
+      citation: "yelp:no_tool_calls"
+
+  data_sources_used:
+    - "yelp"
+
+  caveats:
+    - "The Yelp sub-agent reported confidence 0.0 and did not execute any tool calls, yielding no data."
+    - "Yelp dataset is a 2022 snapshot scoped to Philadelphia and Tampa; no data was retrieved in this instance."
+    - "Without tool calls, no coffee shop names, locations, ratings, or review counts are available."
+
+  confidence_summary: |
+    The Yelp sub-agent scored confidence 0.0 and flagged 'no_tool_calls',
+    indicating it did not attempt to retrieve any data. This results in zero
+    confidence in any findings about coffee shops.
+
+notes: |
+  PASSING CRITERIA for this query (HITL-triggering vague query):
+
+  - data_sources_used SHOULD equal ["yelp"]. The supervisor should
+    recognize this as a yelp-relevant query despite the vagueness.
+
+  - HITL is EXPECTED on this query. The eval runner auto-approves;
+    the resulting memo should reflect the low-confidence path.
+
+  - At least 1 finding citing yelp:find_businesses_by_category OR
+    a caveat-only memo if the tool produced no usable data.
+
+  - confidence_summary MUST surface the low yelp confidence
+    (< 0.7). This is the most important calibration check — if
+    the memo claims "high confidence" on a query where HITL fired
+    on a 0.5 confidence score, that's overclaiming.
+
+  - At least 1 caveat that acknowledges the query was vague /
+    missing specifics (e.g., "no city was specified" or "the
+    query is open-ended").
+
+  - The 2022 Yelp snapshot caveat should still appear if yelp
+    data was returned.
+
+  WHAT'S NOT REQUIRED:
+  - Specific business names or numbers (the agent may have had
+    no useful data to ground them in)
+  - Multiple findings (1-2 is fine on a vague query)
+
+  POTENTIAL FAILURE MODES TO WATCH FOR:
+  - Agent fabricates coffee shop names not in tool output
+    (faithfulness failure)
+  - Memo claims high confidence despite low sub-agent score
+    (calibration failure — the most important one to catch on
+    a HITL query)
+  - Supervisor routes to wrong sub-agent (e.g., sec) because of
+    the ambiguity — would be a real bug worth diagnosing
+  - The "no data" path cites a pseudo-tool (e.g. yelp:no_tool_calls)
+    rather than a real tool that was called. This can trip the
+    citation_correctness judge, which requires the cited tool name
+    to match an actual tool call. Observed on the 2026-06-21 snapshot.
