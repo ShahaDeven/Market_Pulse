@@ -115,8 +115,19 @@ traceable to the content of a tool's output.
 appear in tool output content.
 - A finding must NOT introduce numbers or facts that the tools did not return.
 
-PASS only if ALL findings are grounded in the provided tool outputs. FAIL if \
-ANY finding contains a hallucinated specific number or fact. Give a concise \
+SCOPE — what FAITHFULNESS does NOT judge (this is a rubric boundary, not \
+leniency): this dimension judges ONLY whether the findings that are PRESENT are \
+grounded. It does NOT judge coverage or completeness. A memo that omits a \
+finding for part of the query is NOT a faithfulness failure — for example, when \
+a sub-agent ran but returned no usable data and therefore no finding cites it. \
+A missing, absent, or omitted finding is OUT OF SCOPE here. Do NOT FAIL because \
+a query component lacks a finding; whether all parts of the query were covered \
+is a separate concern judged elsewhere. Judge only the grounding of the \
+findings that DO appear.
+
+PASS only if ALL findings that appear are grounded in the provided tool \
+outputs. FAIL only if a finding that appears contains a hallucinated specific \
+number or fact (NOT because some expected finding is missing). Give a concise \
 reason (<= 300 chars) citing the specific finding if you FAIL."""
 
 _CITATION_SYSTEM = """You are a strict evaluator of equity-research memos. You \

@@ -1,0 +1,190 @@
+# Golden memo for a THREE-SOURCE, multi-domain query.
+#
+# QUERY TYPE: All three sub-agents (sec + yelp + fred), multi-domain synthesis.
+# This is the first golden that exercises ALL THREE domains in one query and
+# the supervisor's ability to route to all three before synthesizing. It also
+# stresses multi-domain synthesis: keeping financial / consumer-presence /
+# macro findings cleanly separated rather than blending them into causal mush.
+#
+# OBSERVED BEHAVIOR (2026-06-21 snapshot):
+#  - Supervisor decomposed the query and routed sec -> yelp -> fred -> synthesize
+#    (4 decisions). data_sources_used = [sec, fred, yelp]. 12 tool calls total.
+#  - SEC: get_financials + get_recent_filings + get_company_info (ticker SG).
+#  - Yelp: find_businesses_by_category(city=Philadelphia, category=Salad). It did
+#    NOT find Sweetgreen in the 2022 snapshot (confidence 0.25). The memo handles
+#    this HONESTLY — no Sweetgreen finding is fabricated and no generic salad
+#    restaurant is presented as Sweetgreen; the gap is disclosed in a caveat and
+#    the executive summary instead of a finding.
+#  - FRED: interpreted "economic environment" broadly and called 8 series
+#    (UNRATE, CPIAUCSL, GDP, GDPC1, DGS10, MORTGAGE30US, T10YIE, M1SL);
+#    synthesis surfaced the 3 most relevant.
+#  - ALL THREE sub-agents scored below 0.7 (sec 0.5, yelp 0.25, fred 0.35), so
+#    HITL fired three times (auto-approved by the runner). The memo surfaces all
+#    three low scores in caveats and confidence_summary.
+#  - NOTE: SEC's 0.5 is a FALLBACK — its confidence judge hit a >300-char
+#    validation error (a known agent-side bug, see evals/failures.md F-003) and
+#    defaulted. SEC's true confidence on this data is ~0.85.
+#
+# This expected_memo is a SNAPSHOT of an actual agent run, not an idealized
+# target. The scorer matches semantically; specific numbers will drift.
+
+query: "How is Sweetgreen performing financially, what's their Philadelphia restaurant presence, and what's the current US economic environment?"
+
+expected_memo:
+  executive_summary: |
+    Sweetgreen reported strong Q1 2026 financial performance with $161.5M
+    revenue and $125.8M net income. The company holds $912.7M in total assets.
+    Philadelphia salad restaurant data was retrieved but did not specifically
+    identify Sweetgreen locations. The US economy shows 4.3% unemployment,
+    4.49% 10-year Treasury yields, and moderate inflation expectations.
+
+  findings:
+    - headline: |
+        Sweetgreen achieved profitability in Q1 2026 with net income of $125.8M
+        on revenue of $161.5M.
+      detail: |
+        For the quarter ended March 29, 2026, Sweetgreen reported revenue of
+        $161.5M and net income of $125.8M, representing a significant turnaround
+        to profitability. Operating income was $34.3M. Diluted EPS was $1.05.
+        This marks a strong financial performance for the fast-casual salad
+        chain.
+      citation: "sec:get_financials"
+
+    - headline: |
+        Sweetgreen maintains a solid balance sheet with $912.7M in total assets
+        and $156.8M in cash.
+      detail: |
+        As of March 29, 2026, Sweetgreen held total assets of $912.7M, including
+        $156.8M in cash and cash equivalents. Total liabilities were $423.8M
+        against stockholders' equity of $488.9M. Property, plant and equipment
+        net totaled $318.3M, reflecting the company's restaurant footprint.
+        Current assets of $175.3M exceed current liabilities of $109.1M.
+      citation: "sec:get_financials"
+
+    - headline: |
+        Sweetgreen generated positive operating cash flow of $17.2M in Q1 2026.
+      detail: |
+        The company reported net cash provided by operating activities of $17.2M
+        for the quarter ended March 29, 2026, demonstrating operational
+        efficiency and the ability to convert earnings into cash.
+      citation: "sec:get_financials"
+
+    - headline: |
+        US unemployment rate stands at 4.3% as of May 2026.
+      detail: |
+        The unemployment rate was 4.3% in May 2026, indicating a relatively
+        tight labor market. This metric is relevant for restaurant operators
+        like Sweetgreen in terms of labor availability and wage pressures.
+      citation: "fred:UNRATE"
+
+    - headline: |
+        The 10-year Treasury yield is 4.49% and market inflation expectations
+        are moderate at 2.25%.
+      detail: |
+        As of June 17-18, 2026, the 10-year Treasury constant maturity rate was
+        4.49%, while the 10-year breakeven inflation rate stood at 2.25%. These
+        indicators suggest a stable interest rate environment with anchored
+        inflation expectations, relevant for consumer spending and business
+        financing costs.
+      citation: "fred:DGS10"
+
+    - headline: |
+        Real GDP reached $24.2 trillion in Q1 2026, reflecting continued
+        economic expansion.
+      detail: |
+        Real Gross Domestic Product (inflation-adjusted) was $24,152.7 billion
+        in Q1 2026, measured in chained 2017 dollars. Nominal GDP was $31,819.5
+        billion. This indicates ongoing economic growth, which supports consumer
+        discretionary spending at restaurants.
+      citation: "fred:GDPC1"
+
+  data_sources_used:
+    - "sec"
+    - "fred"
+    - "yelp"
+
+  caveats:
+    - "Yelp sub-agent (confidence 0.25) searched Philadelphia salad restaurants but did not specifically identify or retrieve Sweetgreen locations; data is from a 2022 snapshot limited to Philadelphia and Tampa."
+    - "SEC sub-agent (confidence 0.5) experienced judgment failure in confidence assessment; financial data is from Q1 2026 10-Q filing."
+    - "FRED sub-agent (confidence 0.35) provided US economic indicators but could not address company-specific or Philadelphia restaurant presence questions."
+
+  confidence_summary: |
+    SEC data has moderate confidence (0.5) due to judgment failure but
+    financials are directly extracted from official 10-Q filings. FRED economic
+    data has low confidence (0.35) as it only partially addressed the query
+    scope. Yelp data has very low confidence (0.25) and failed to identify
+    Sweetgreen-specific Philadelphia locations, returning only general salad
+    restaurants from a 2022 snapshot.
+
+notes: |
+  PASSING CRITERIA for this query (three-source multi-domain query):
+
+  - data_sources_used MUST include ALL THREE: ["yelp", "sec", "fred"].
+    If any are missing, the supervisor failed to route to all three
+    domains. This is the most important structural check.
+
+  - At least 1 finding citing each of: sec:get_recent_filings (or
+    get_financials), yelp:find_businesses_by_category (or whichever
+    yelp tool ran), fred:UNRATE (or whichever fred series ran).
+
+  - Findings should be CLEANLY SEPARATED by domain. A finding like
+    "Sweetgreen's $161M revenue reflects strong consumer demand in
+    Philadelphia and a healthy macro environment" is BAD — it blends
+    three domains into one causal-sounding claim. Each finding should
+    stay within its sub-agent's domain.
+
+  - executive_summary should mention all three topics distinctly. A
+    summary that only mentions Sweetgreen financials, or only the
+    macro context, is a coverage failure.
+
+  - NO causal claims linking the domains. The three findings are
+    INDEPENDENT and should be presented that way. "Sweetgreen's
+    Philadelphia growth shows confidence in the local economy" is a
+    causal overreach — the memo can present all three but shouldn't
+    causally link them.
+
+  - confidence_summary should reflect EACH sub-agent's actual
+    confidence. With three sub-agents reporting, this section gets
+    longer; that's fine.
+
+  - Standard caveats should appear: Yelp 2022 snapshot, FRED single
+    data point not trend, SEC partial_match.
+
+  WHAT'S NOT REQUIRED:
+  - Sweetgreen actually existing in the 2022 Yelp Philadelphia
+    dataset. If yelp can't find Sweetgreen, the memo should say so
+    honestly — not substitute generic restaurant data.
+  - A specific number of findings (5-8 is reasonable for three
+    domains).
+  - All three sub-agents triggering HITL or none — depends on what
+    confidence each returns.
+
+  POTENTIAL FAILURE MODES TO WATCH FOR:
+  - Supervisor invokes only 2 of 3 sub-agents and synthesizes early
+    (covered above as outcome B).
+  - Synthesis blends domains into causal claims (covered above as
+    outcome C — the "this reflects that" pattern).
+  - Yelp doesn't find Sweetgreen in the 2022 snapshot and the agent
+    substitutes generic Philadelphia restaurant data, presenting it
+    as Sweetgreen's. This would be a faithfulness bug similar to
+    query_005's documented concern.
+  - FRED makes only 1 call (UNRATE) when the query implies a broader
+    "economic environment" — would be a coverage issue but maybe not
+    a faithfulness one if the memo is honest about the single
+    indicator.
+
+  OBSERVED VARIANT (2026-06-21):
+  - Supervisor routed to all three (sec -> yelp -> fred), exactly the
+    structural behavior this golden tests.
+  - Yelp did NOT find Sweetgreen in the 2022 Philadelphia snapshot
+    (confidence 0.25). Rather than substitute generic salad restaurants
+    as if they were Sweetgreen, the memo discloses the gap in the
+    executive_summary and a caveat, and emits NO yelp finding. This is
+    the honest handling we want — so the "1 finding per domain" criterion
+    above is satisfied for the yelp domain by the caveat/summary
+    disclosure, not a fabricated finding. Do NOT treat the missing yelp
+    finding as a failure; treat a fabricated Sweetgreen finding as one.
+  - All three sub-agents scored < 0.7 (sec 0.5 [fallback], yelp 0.25,
+    fred 0.35); HITL fired three times and the memo surfaced all three.
+  - FRED interpreted "economic environment" broadly (8 series); synthesis
+    surfaced the most relevant subset.
